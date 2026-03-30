@@ -1,3 +1,5 @@
+import { gameEvents } from "./events";
+
 const HUD_STYLES = `
   #hud-container {
     position: fixed;
@@ -35,6 +37,25 @@ const HUD_STYLES = `
     font-weight: bold;
     opacity: 0;
     transition: opacity 0.3s;
+  }
+
+  #hud-ammo {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    font-size: 28px;
+    color: #ffffff;
+  }
+
+  #hud-reloading {
+    position: absolute;
+    top: 55%;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 22px;
+    color: #ffcc00;
+    opacity: 0;
+    transition: opacity 0.15s;
   }
 
   #hud-gameover {
@@ -76,6 +97,8 @@ export class HUD {
   private announcementEl: HTMLElement;
   private gameoverEl: HTMLElement;
   private gameoverRoundEl: HTMLElement;
+  private ammoEl: HTMLElement;
+  private reloadingEl: HTMLElement;
   private announcementTimeout: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
@@ -91,6 +114,8 @@ export class HUD {
     container.innerHTML = `
       <div id="hud-round">Round: 1</div>
       <div id="hud-hp">HP: 100</div>
+      <div id="hud-ammo">12 / 12</div>
+      <div id="hud-reloading">RELOADING...</div>
       <div id="hud-announcement"></div>
       <div id="hud-gameover">
         <div id="hud-gameover-title">GAME OVER</div>
@@ -106,13 +131,31 @@ export class HUD {
     this.announcementEl = document.getElementById("hud-announcement")!;
     this.gameoverEl = document.getElementById("hud-gameover")!;
     this.gameoverRoundEl = document.getElementById("hud-gameover-round")!;
+    this.ammoEl = document.getElementById("hud-ammo")!;
+    this.reloadingEl = document.getElementById("hud-reloading")!;
+
+    // Subscribe to game events
+    gameEvents.on("roundChanged", (data) => {
+      this.updateRound(data.round);
+      this.showAnnouncement(`Round ${data.round}`);
+    });
+
+    gameEvents.on("playerDamaged", (data) => {
+      if (data.currentHp >= 0) {
+        this.updateHP(data.currentHp);
+      }
+    });
+
+    gameEvents.on("playerDied", (data) => {
+      this.showGameOver(data.round);
+    });
   }
 
-  updateRound(round: number): void {
+  private updateRound(round: number): void {
     this.roundEl.textContent = `Round: ${round}`;
   }
 
-  updateHP(hp: number): void {
+  private updateHP(hp: number): void {
     this.hpEl.textContent = `HP: ${hp}`;
     if (hp > 60) {
       this.hpEl.style.color = "#33ff33";
@@ -123,7 +166,7 @@ export class HUD {
     }
   }
 
-  showAnnouncement(text: string): void {
+  private showAnnouncement(text: string): void {
     if (this.announcementTimeout) {
       clearTimeout(this.announcementTimeout);
     }
@@ -136,7 +179,22 @@ export class HUD {
     }, 2000);
   }
 
-  showGameOver(round: number): void {
+  updateAmmo(current: number, max: number): void {
+    this.ammoEl.textContent = `${current} / ${max}`;
+    if (current === 0) {
+      this.ammoEl.style.color = "#ff3333";
+    } else if (current <= 4) {
+      this.ammoEl.style.color = "#ffcc00";
+    } else {
+      this.ammoEl.style.color = "#ffffff";
+    }
+  }
+
+  showReloading(visible: boolean): void {
+    this.reloadingEl.style.opacity = visible ? "1" : "0";
+  }
+
+  private showGameOver(round: number): void {
     this.gameoverRoundEl.textContent = `You reached Round ${round}`;
     this.gameoverEl.style.display = "flex";
 

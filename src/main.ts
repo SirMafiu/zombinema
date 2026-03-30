@@ -6,6 +6,7 @@ import { EnemyManager } from "./enemy";
 import { RoundManager } from "./round-system";
 import { PlayerHealth } from "./player";
 import { HUD } from "./hud";
+import { gameEvents } from "./events";
 
 const canvas = document.getElementById("renderCanvas") as HTMLCanvasElement;
 const engine = new Engine(canvas, true);
@@ -14,29 +15,38 @@ const { scene, mapData } = createScene(engine);
 setupFpsController(scene, canvas, mapData.playerStart, mapData.walls);
 
 const hud = new HUD();
-const playerHealth = new PlayerHealth(hud);
+const _playerHealth = new PlayerHealth();
 const enemyManager = new EnemyManager(scene);
 enemyManager.setWalls(mapData.walls);
 enemyManager.setSpawnPoints(mapData.spawnPoints);
 
-const roundManager = new RoundManager(enemyManager, hud);
+const roundManager = new RoundManager(enemyManager);
 
-enemyManager.setOnPlayerDamage((amount) => {
-  playerHealth.takeDamage(amount);
+setupShooting(scene, enemyManager, hud);
+
+// Release pointer lock on player death
+gameEvents.on("playerDied", () => {
+  document.exitPointerLock();
 });
 
-roundManager.setOnRoundChange((round) => {
-  playerHealth.setCurrentRound(round);
-});
-
-setupShooting(scene, enemyManager);
-
-// Start the first round after a short delay
-setTimeout(() => {
-  roundManager.start();
-}, 2000);
+// Start the first round after a short delay using delta-time tracking
+let startDelay = 0;
+let gameStarted = false;
+const START_DELAY_MS = 2000;
 
 engine.runRenderLoop(() => {
+  const dt = engine.getDeltaTime();
+
+  if (!gameStarted) {
+    startDelay += dt;
+    if (startDelay >= START_DELAY_MS) {
+      gameStarted = true;
+      roundManager.start();
+    }
+  } else {
+    roundManager.update(dt);
+  }
+
   scene.render();
 });
 

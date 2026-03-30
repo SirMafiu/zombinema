@@ -1,27 +1,28 @@
-import { HUD } from "./hud";
+import { gameEvents } from "./events";
 
 const MAX_HP = 100;
 
 export class PlayerHealth {
   private hp: number = MAX_HP;
-  private hud: HUD;
   private dead = false;
   private currentRound = 1;
 
-  constructor(hud: HUD) {
-    this.hud = hud;
-    this.hud.updateHP(this.hp);
+  constructor() {
+    gameEvents.on("playerDamaged", (data) => {
+      this.takeDamage(data.damage);
+    });
+
+    gameEvents.on("roundChanged", (data) => {
+      this.currentRound = data.round;
+    });
   }
 
-  setCurrentRound(round: number): void {
-    this.currentRound = round;
-  }
-
-  takeDamage(amount: number): void {
+  private takeDamage(amount: number): void {
     if (this.dead) return;
 
     this.hp = Math.max(0, this.hp - amount);
-    this.hud.updateHP(this.hp);
+    // Re-emit with the actual current HP so listeners (HUD) can use it
+    gameEvents.emit("playerDamaged", { damage: amount, currentHp: this.hp });
 
     if (this.hp <= 0) {
       this.die();
@@ -34,7 +35,6 @@ export class PlayerHealth {
 
   private die(): void {
     this.dead = true;
-    document.exitPointerLock();
-    this.hud.showGameOver(this.currentRound);
+    gameEvents.emit("playerDied", { round: this.currentRound });
   }
 }

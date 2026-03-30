@@ -13,6 +13,17 @@ const PLAYER_RADIUS = 0.4;
 const JUMP_FORCE = 6;
 const GRAVITY = 15;
 
+const MOVEMENT_KEYS = new Set([
+  "KeyW", "KeyZ", "KeyS", "KeyD", "KeyA", "KeyQ",
+]);
+
+/** Returns true if the player is currently pressing a movement key. */
+export function isPlayerMoving(): boolean {
+  return [...activeKeys].some((k) => MOVEMENT_KEYS.has(k));
+}
+
+const activeKeys = new Set<string>();
+
 export function setupFpsController(
   scene: Scene,
   canvas: HTMLCanvasElement,
@@ -48,8 +59,8 @@ export function setupFpsController(
     camera.rotation.x = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, camera.rotation.x));
   });
 
-  // WASD movement
-  const keys = new Set<string>();
+  // WASD movement — use module-level activeKeys so isPlayerMoving() works
+  const keys = activeKeys;
 
   window.addEventListener("keydown", (e) => keys.add(e.code));
   window.addEventListener("keyup", (e) => keys.delete(e.code));

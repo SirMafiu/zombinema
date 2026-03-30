@@ -7,6 +7,8 @@ import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import { Observer } from "@babylonjs/core/Misc/observable";
 import { clampToMap } from "./map";
+import { gameEvents } from "./events";
+import { ObjectPool } from "./object-pool";
 
 const ENEMY_SPEED = 2;
 const ENEMY_HP = 3;
@@ -29,13 +31,13 @@ interface Enemy {
 export class EnemyManager {
   private scene: Scene;
   private enemies: Enemy[] = [];
+  private enemyByMeshId = new Map<string, Enemy>();
   private updateObserver: Observer<Scene> | null = null;
-  private onEnemyDeath: (() => void) | null = null;
-  private onPlayerDamage: ((amount: number) => void) | null = null;
   private bodyMat: StandardMaterial;
   private eyeMat: StandardMaterial;
   private walls: Mesh[] = [];
   private spawnPoints: Vector3[] = [];
+  private meshPool: ObjectPool<Enemy>;
 
   constructor(scene: Scene) {
     this.scene = scene;
@@ -47,47 +49,22 @@ export class EnemyManager {
     this.eyeMat.diffuseColor = new Color3(1, 1, 1);
     this.eyeMat.emissiveColor = new Color3(0.5, 0.5, 0.5);
 
+    this.meshPool = new ObjectPool<Enemy>(
+      () => this.createEnemyMeshGroup(),
+      (enemy) => this.deactivateEnemy(enemy),
+      20,
+    );
+
     this.updateObserver = scene.onBeforeRenderObservable.add(() => {
       this.update();
     });
   }
 
-  setWalls(walls: Mesh[]): void {
-    this.walls = walls;
-  }
-
-  setSpawnPoints(points: Vector3[]): void {
-    this.spawnPoints = points;
-  }
-
-  setOnEnemyDeath(cb: () => void): void {
-    this.onEnemyDeath = cb;
-  }
-
-  setOnPlayerDamage(cb: (amount: number) => void): void {
-    this.onPlayerDamage = cb;
-  }
-
-  spawnEnemy(): void {
-    let x: number;
-    let z: number;
-
-    if (this.spawnPoints.length > 0) {
-      const point = this.spawnPoints[Math.floor(Math.random() * this.spawnPoints.length)];
-      // Add some jitter so enemies don't stack
-      x = point.x + (Math.random() - 0.5) * 3;
-      z = point.z + (Math.random() - 0.5) * 3;
-    } else {
-      const angle = Math.random() * Math.PI * 2;
-      const dist = 30 + Math.random() * 10;
-      x = Math.cos(angle) * dist;
-      z = Math.sin(angle) * dist;
-    }
-
-    const id = `enemy_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+  private createEnemyMeshGroup(): Enemy {
+    const id = `enemy_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
 
     const root = new Mesh(id, this.scene);
-    root.position = new Vector3(x, ENEMY_SIZE / 2, z);
+    root.position = new Vector3(0, ENEMY_SIZE / 2, 0);
 
     const body = MeshBuilder.CreateBox(`${id}_body`, { size: ENEMY_SIZE }, this.scene);
     body.material = this.bodyMat;
@@ -108,7 +85,7 @@ export class EnemyManager {
     rightEye.parent = root;
     rightEye.position = new Vector3(eyeSpacing, eyeY, eyeOffset);
 
-    this.enemies.push({
+    const enemy: Enemy = {
       root,
       body,
       leftEye,
@@ -116,7 +93,66 @@ export class EnemyManager {
       hp: ENEMY_HP,
       lastAttackTime: 0,
       dying: false,
-    });
+    };
+
+    return enemy;
+  }
+
+  private activateEnemy(enemy: Enemy, x: number, z: number): void {
+    enemy.hp = ENEMY_HP;
+    enemy.lastAttackTime = 0;
+    enemy.dying = false;
+    enemy.root.position = new Vector3(x, ENEMY_SIZE / 2, z);
+    enemy.root.rotation.x = 0;
+    enemy.root.rotation.y = 0;
+    enemy.root.rotation.z = 0;
+    enemy.root.setEnabled(true);
+
+    // Register in lookup map
+    this.enemyByMeshId.set(enemy.root.uniqueId.toString(), enemy);
+    this.enemyByMeshId.set(enemy.body.uniqueId.toString(), enemy);
+    this.enemyByMeshId.set(enemy.leftEye.uniqueId.toString(), enemy);
+    this.enemyByMeshId.set(enemy.rightEye.uniqueId.toString(), enemy);
+  }
+
+  private deactivateEnemy(enemy: Enemy): void {
+    enemy.root.setEnabled(false);
+    enemy.dying = false;
+
+    // Unregister from lookup map
+    this.enemyByMeshId.delete(enemy.root.uniqueId.toString());
+    this.enemyByMeshId.delete(enemy.body.uniqueId.toString());
+    this.enemyByMeshId.delete(enemy.leftEye.uniqueId.toString());
+    this.enemyByMeshId.delete(enemy.rightEye.uniqueId.toString());
+  }
+
+  setWalls(walls: Mesh[]): void {
+    this.walls = walls;
+  }
+
+  setSpawnPoints(points: Vector3[]): void {
+    this.spawnPoints = points;
+  }
+
+  spawnEnemy(): void {
+    let x: number;
+    let z: number;
+
+    if (this.spawnPoints.length > 0) {
+      const point = this.spawnPoints[Math.floor(Math.random() * this.spawnPoints.length)];
+      // Add some jitter so enemies don't stack
+      x = point.x + (Math.random() - 0.5) * 3;
+      z = point.z + (Math.random() - 0.5) * 3;
+    } else {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 30 + Math.random() * 10;
+      x = Math.cos(angle) * dist;
+      z = Math.sin(angle) * dist;
+    }
+
+    const enemy = this.meshPool.acquire();
+    this.activateEnemy(enemy, x, z);
+    this.enemies.push(enemy);
   }
 
   private update(): void {
@@ -157,7 +193,7 @@ export class EnemyManager {
         // Attack player
         if (now - enemy.lastAttackTime >= ATTACK_COOLDOWN) {
           enemy.lastAttackTime = now;
-          this.onPlayerDamage?.(1);
+          gameEvents.emit("playerDamaged", { damage: 1, currentHp: -1 });
         }
       }
 
@@ -172,18 +208,14 @@ export class EnemyManager {
   }
 
   isEnemyMesh(mesh: AbstractMesh): boolean {
-    if (!mesh.name) return false;
-    // Check if the mesh itself or its parent is an enemy root
-    const rootName = mesh.parent ? mesh.parent.name : mesh.name;
-    return this.enemies.some((e) => !e.dying && (e.root.name === rootName || e.root.name === mesh.name));
+    return this.enemyByMeshId.has(mesh.uniqueId.toString());
   }
 
   applyDamage(mesh: AbstractMesh, amount: number): void {
-    const rootName = mesh.parent ? mesh.parent.name : mesh.name;
-    const enemy = this.enemies.find(
-      (e) => !e.dying && (e.root.name === rootName || e.root.name === mesh.name)
-    );
-    if (!enemy) return;
+    const enemy =
+      this.enemyByMeshId.get(mesh.uniqueId.toString()) ??
+      (mesh.parent ? this.enemyByMeshId.get((mesh.parent as AbstractMesh).uniqueId.toString()) : undefined);
+    if (!enemy || enemy.dying) return;
 
     enemy.hp -= amount;
     if (enemy.hp <= 0) {
@@ -193,6 +225,7 @@ export class EnemyManager {
 
   private killEnemy(enemy: Enemy): void {
     enemy.dying = true;
+    const position = enemy.root.position.clone();
     const startTime = performance.now();
 
     const obs = this.scene.onBeforeRenderObservable.add(() => {
@@ -206,21 +239,18 @@ export class EnemyManager {
 
       if (t >= 1) {
         this.scene.onBeforeRenderObservable.remove(obs);
-        this.disposeEnemy(enemy);
-        this.onEnemyDeath?.();
+        this.releaseEnemy(enemy);
+        gameEvents.emit("enemyDied", { position });
       }
     });
   }
 
-  private disposeEnemy(enemy: Enemy): void {
-    enemy.leftEye.dispose();
-    enemy.rightEye.dispose();
-    enemy.body.dispose();
-    enemy.root.dispose();
+  private releaseEnemy(enemy: Enemy): void {
     const idx = this.enemies.indexOf(enemy);
     if (idx !== -1) {
       this.enemies.splice(idx, 1);
     }
+    this.meshPool.release(enemy);
   }
 
   get aliveCount(): number {
@@ -229,7 +259,7 @@ export class EnemyManager {
 
   disposeAll(): void {
     for (const enemy of [...this.enemies]) {
-      this.disposeEnemy(enemy);
+      this.releaseEnemy(enemy);
     }
     this.enemies = [];
   }
