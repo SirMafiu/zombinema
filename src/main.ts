@@ -10,71 +10,84 @@ import { HUD } from "./hud";
 import { gameEvents } from "./events";
 import { PowerUpManager } from "./powerup";
 import { PowerUpEffectManager } from "./powerup-effects";
+import { loadMap } from "./map-loader";
+
+// Set to a .glb path to use a custom Blender map, or null for the procedural map
+const CUSTOM_MAP_PATH: string | null = null; // e.g. "/assets/office.glb"
 
 const canvas = document.getElementById("renderCanvas") as HTMLCanvasElement;
 const engine = new Engine(canvas, true);
 
-const { scene, mapData } = createScene(engine);
-setupFpsController(scene, canvas, mapData.playerStart, mapData.walls);
+const { scene, mapData: proceduralMapData } = createScene(engine);
+async function init() {
+  // Load map: custom .glb or fallback to procedural
+  const mapData = CUSTOM_MAP_PATH
+    ? await loadMap(scene, CUSTOM_MAP_PATH)
+    : proceduralMapData;
 
-const hud = new HUD();
-const _playerHealth = new PlayerHealth();
-const enemyManager = new EnemyManager(scene);
-enemyManager.setWalls(mapData.walls);
-enemyManager.setSpawnPoints(mapData.spawnPoints);
+  setupFpsController(scene, canvas, mapData.playerStart, mapData.walls);
 
-const roundManager = new RoundManager(enemyManager);
+  const hud = new HUD();
+  const _playerHealth = new PlayerHealth();
+  const enemyManager = new EnemyManager(scene);
+  enemyManager.setWalls(mapData.walls);
+  enemyManager.setSpawnPoints(mapData.spawnPoints);
 
-const effectManager = new PowerUpEffectManager();
+  const roundManager = new RoundManager(enemyManager);
 
-const powerUpManager = new PowerUpManager();
-for (const pos of mapData.powerUpSpawns) {
-  powerUpManager.addPowerUp(scene, {
-    type: "compilateur",
-    color: new Color3(0, 1, 0),
-    position: pos,
+  const effectManager = new PowerUpEffectManager();
+
+  const powerUpManager = new PowerUpManager();
+  for (const pos of mapData.powerUpSpawns) {
+    powerUpManager.addPowerUp(scene, {
+      type: "compilateur",
+      color: new Color3(0, 1, 0),
+      position: pos,
+    });
+  }
+
+  setupShooting(scene, enemyManager, hud, effectManager);
+
+  // Release pointer lock on player death
+  gameEvents.on("playerDied", () => {
+    document.exitPointerLock();
+  });
+
+  // Start the first round after a short delay using delta-time tracking
+  let startDelay = 0;
+  let gameStarted = false;
+  const START_DELAY_MS = 2000;
+
+  engine.runRenderLoop(() => {
+    const dt = engine.getDeltaTime();
+
+    if (!gameStarted) {
+      startDelay += dt;
+      if (startDelay >= START_DELAY_MS) {
+        gameStarted = true;
+        roundManager.start();
+      }
+    } else {
+      roundManager.update(dt);
+    }
+
+    // Update power-ups
+    const playerPos = scene.activeCamera!.position;
+    powerUpManager.update(dt, playerPos);
+    effectManager.update(dt);
+
+    // Update HUD power-up timer
+    const compilateurRemaining = effectManager.getRemainingTime("compilateur");
+    if (compilateurRemaining > 0) {
+      hud.updatePowerUpTimer(compilateurRemaining);
+    }
+
+    scene.render();
+  });
+
+  window.addEventListener("resize", () => {
+    engine.resize();
   });
 }
 
-setupShooting(scene, enemyManager, hud, effectManager);
-
-// Release pointer lock on player death
-gameEvents.on("playerDied", () => {
-  document.exitPointerLock();
-});
-
-// Start the first round after a short delay using delta-time tracking
-let startDelay = 0;
-let gameStarted = false;
-const START_DELAY_MS = 2000;
-
-engine.runRenderLoop(() => {
-  const dt = engine.getDeltaTime();
-
-  if (!gameStarted) {
-    startDelay += dt;
-    if (startDelay >= START_DELAY_MS) {
-      gameStarted = true;
-      roundManager.start();
-    }
-  } else {
-    roundManager.update(dt);
-  }
-
-  // Update power-ups
-  const playerPos = scene.activeCamera!.position;
-  powerUpManager.update(dt, playerPos);
-  effectManager.update(dt);
-
-  // Update HUD power-up timer
-  const compilateurRemaining = effectManager.getRemainingTime("compilateur");
-  if (compilateurRemaining > 0) {
-    hud.updatePowerUpTimer(compilateurRemaining);
-  }
-
-  scene.render();
-});
-
-window.addEventListener("resize", () => {
-  engine.resize();
-});
+init();
