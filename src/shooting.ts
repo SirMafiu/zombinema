@@ -13,6 +13,7 @@ import { HUD } from "./hud";
 import { isPlayerMoving } from "./fps-controller";
 import { gameEvents } from "./events";
 import { ObjectPool } from "./object-pool";
+import { PowerUpEffectManager } from "./powerup-effects";
 import "@babylonjs/core/Culling/ray";
 
 interface ImpactMarker {
@@ -33,6 +34,7 @@ export function setupShooting(
   scene: Scene,
   enemyManager: EnemyManager,
   hud: HUD,
+  effectManager: PowerUpEffectManager,
 ): void {
   const camera = scene.activeCamera as UniversalCamera;
   const weapon = new Weapon(scene, camera);
@@ -108,8 +110,9 @@ export function setupShooting(
 
     if (hit?.hit && hit.pickedPoint && hit.pickedMesh) {
       if (enemyManager.isEnemyMesh(hit.pickedMesh)) {
-        enemyManager.applyDamage(hit.pickedMesh, 1);
-        gameEvents.emit("enemyHit", { position: hit.pickedPoint.clone(), damage: 1 });
+        const damage = 1 * effectManager.getDamageMultiplier();
+        enemyManager.applyDamage(hit.pickedMesh, damage);
+        gameEvents.emit("enemyHit", { position: hit.pickedPoint.clone(), damage });
         activateImpactMarker(hit.pickedPoint, true);
       } else {
         activateImpactMarker(hit.pickedPoint, false);

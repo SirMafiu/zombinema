@@ -1,4 +1,5 @@
 import { Engine } from "@babylonjs/core/Engines/engine";
+import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { createScene } from "./scene";
 import { setupFpsController } from "./fps-controller";
 import { setupShooting } from "./shooting";
@@ -7,6 +8,8 @@ import { RoundManager } from "./round-system";
 import { PlayerHealth } from "./player";
 import { HUD } from "./hud";
 import { gameEvents } from "./events";
+import { PowerUpManager } from "./powerup";
+import { PowerUpEffectManager } from "./powerup-effects";
 
 const canvas = document.getElementById("renderCanvas") as HTMLCanvasElement;
 const engine = new Engine(canvas, true);
@@ -22,7 +25,18 @@ enemyManager.setSpawnPoints(mapData.spawnPoints);
 
 const roundManager = new RoundManager(enemyManager);
 
-setupShooting(scene, enemyManager, hud);
+const effectManager = new PowerUpEffectManager();
+
+const powerUpManager = new PowerUpManager();
+for (const pos of mapData.powerUpSpawns) {
+  powerUpManager.addPowerUp(scene, {
+    type: "compilateur",
+    color: new Color3(0, 1, 0),
+    position: pos,
+  });
+}
+
+setupShooting(scene, enemyManager, hud, effectManager);
 
 // Release pointer lock on player death
 gameEvents.on("playerDied", () => {
@@ -45,6 +59,17 @@ engine.runRenderLoop(() => {
     }
   } else {
     roundManager.update(dt);
+  }
+
+  // Update power-ups
+  const playerPos = scene.activeCamera!.position;
+  powerUpManager.update(dt, playerPos);
+  effectManager.update(dt);
+
+  // Update HUD power-up timer
+  const compilateurRemaining = effectManager.getRemainingTime("compilateur");
+  if (compilateurRemaining > 0) {
+    hud.updatePowerUpTimer(compilateurRemaining);
   }
 
   scene.render();

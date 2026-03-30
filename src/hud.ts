@@ -58,6 +58,34 @@ const HUD_STYLES = `
     transition: opacity 0.15s;
   }
 
+  #hud-powerup {
+    position: absolute;
+    bottom: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 22px;
+    font-weight: bold;
+    color: #00ff00;
+    text-shadow: 0 0 10px #00ff00, 0 0 20px #00ff00;
+    opacity: 0;
+    transition: opacity 0.2s;
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  #hud-powerup-vignette {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 49;
+    box-shadow: inset 0 0 80px rgba(0, 255, 0, 0.3);
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
   #hud-gameover {
     position: absolute;
     top: 0;
@@ -99,6 +127,8 @@ export class HUD {
   private gameoverRoundEl: HTMLElement;
   private ammoEl: HTMLElement;
   private reloadingEl: HTMLElement;
+  private powerupEl: HTMLElement;
+  private vignetteEl: HTMLElement;
   private announcementTimeout: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
@@ -116,6 +146,7 @@ export class HUD {
       <div id="hud-hp">HP: 100</div>
       <div id="hud-ammo">12 / 12</div>
       <div id="hud-reloading">RELOADING...</div>
+      <div id="hud-powerup"></div>
       <div id="hud-announcement"></div>
       <div id="hud-gameover">
         <div id="hud-gameover-title">GAME OVER</div>
@@ -126,6 +157,11 @@ export class HUD {
 
     document.body.appendChild(container);
 
+    // Vignette overlay (outside hud-container for its own z-index)
+    const vignette = document.createElement("div");
+    vignette.id = "hud-powerup-vignette";
+    document.body.appendChild(vignette);
+
     this.roundEl = document.getElementById("hud-round")!;
     this.hpEl = document.getElementById("hud-hp")!;
     this.announcementEl = document.getElementById("hud-announcement")!;
@@ -133,6 +169,8 @@ export class HUD {
     this.gameoverRoundEl = document.getElementById("hud-gameover-round")!;
     this.ammoEl = document.getElementById("hud-ammo")!;
     this.reloadingEl = document.getElementById("hud-reloading")!;
+    this.powerupEl = document.getElementById("hud-powerup")!;
+    this.vignetteEl = vignette;
 
     // Subscribe to game events
     gameEvents.on("roundChanged", (data) => {
@@ -148,6 +186,18 @@ export class HUD {
 
     gameEvents.on("playerDied", (data) => {
       this.showGameOver(data.round);
+    });
+
+    gameEvents.on("powerupCollected", (data) => {
+      if (data.type === "compilateur") {
+        this.showPowerUp(true);
+      }
+    });
+
+    gameEvents.on("powerupExpired", (data) => {
+      if (data.type === "compilateur") {
+        this.showPowerUp(false);
+      }
     });
   }
 
@@ -192,6 +242,21 @@ export class HUD {
 
   showReloading(visible: boolean): void {
     this.reloadingEl.style.opacity = visible ? "1" : "0";
+  }
+
+  private showPowerUp(active: boolean): void {
+    this.powerupEl.style.opacity = active ? "1" : "0";
+    this.vignetteEl.style.opacity = active ? "1" : "0";
+    if (!active) {
+      this.powerupEl.textContent = "";
+    }
+  }
+
+  updatePowerUpTimer(remainingMs: number): void {
+    if (remainingMs > 0) {
+      const seconds = Math.ceil(remainingMs / 1000);
+      this.powerupEl.textContent = `COMPILATEUR ACTIF — ${seconds}s`;
+    }
   }
 
   private showGameOver(round: number): void {

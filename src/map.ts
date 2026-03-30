@@ -16,6 +16,7 @@ export interface MapData {
   walls: Mesh[];
   spawnPoints: Vector3[];
   playerStart: Vector3;
+  powerUpSpawns: Vector3[];
 }
 
 interface WallDef {
@@ -186,7 +187,14 @@ export function createMap(scene: Scene): MapData {
 
   const playerStart = new Vector3(0, 1.8, 0);
 
-  return { walls, spawnPoints, playerStart };
+  // Power-up spawn positions (server room, kitchen, corridor north end)
+  const powerUpSpawns: Vector3[] = [
+    new Vector3(-13, 0, -16),   // Server room
+    new Vector3(-18, 0, 2),     // Kitchen left
+    new Vector3(13, 0, 14),     // NE open space
+  ];
+
+  return { walls, spawnPoints, playerStart, powerUpSpawns };
 }
 
 /**

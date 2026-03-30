@@ -9,6 +9,8 @@ export type EventMap = {
   enemyHit: { position: Vector3; damage: number };
   weaponFired: {};
   weaponReloaded: {};
+  powerupCollected: { type: string };
+  powerupExpired: { type: string };
 };
 
 type Callback<K extends keyof EventMap> = (data: EventMap[K]) => void;
