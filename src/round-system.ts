@@ -14,7 +14,7 @@ export class RoundManager {
   constructor(enemyManager: EnemyManager) {
     this.enemyManager = enemyManager;
 
-    gameEvents.on("enemyDied", () => {
+    gameEvents.on("enemyKilled", () => {
       this.enemiesRemaining--;
       if (this.enemiesRemaining <= 0) {
         this.onRoundCleared();

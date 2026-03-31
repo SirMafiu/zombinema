@@ -178,10 +178,8 @@ export class HUD {
       this.showAnnouncement(`Round ${data.round}`);
     });
 
-    gameEvents.on("playerDamaged", (data) => {
-      if (data.currentHp >= 0) {
-        this.updateHP(data.currentHp);
-      }
+    gameEvents.on("playerHpChanged", (data) => {
+      this.updateHP(data.currentHp);
     });
 
     gameEvents.on("playerDied", (data) => {
@@ -263,8 +261,10 @@ export class HUD {
     this.gameoverRoundEl.textContent = `You reached Round ${round}`;
     this.gameoverEl.style.display = "flex";
 
-    this.gameoverEl.addEventListener("click", () => {
+    const restart = () => {
+      this.gameoverEl.removeEventListener("click", restart);
       window.location.reload();
-    });
+    };
+    this.gameoverEl.addEventListener("click", restart);
   }
 }

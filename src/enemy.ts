@@ -1,5 +1,6 @@
 import { Scene } from "@babylonjs/core/scene";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Ray } from "@babylonjs/core/Culling/ray";
 import { SceneLoader } from "@babylonjs/core/Loading/sceneLoader";
 import { AssetContainer } from "@babylonjs/core/assetContainer";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
@@ -17,6 +18,8 @@ const ENEMY_SIZE = 0.25;
 const ATTACK_RANGE = 1.5;
 const ATTACK_COOLDOWN = 1000; // ms
 const ENEMY_RADIUS = 0.6;
+const ENEMY_HEIGHT = 1.5;
+const GRAVITY = 20;
 
 type ZombieAnim = "idle" | "walk" | "attack" | "crawl";
 
@@ -28,14 +31,18 @@ interface Enemy {
   hp: number;
   lastAttackTime: number;
   dying: boolean;
+  velocityY: number;
+  groundY: number;
 }
 
 export class EnemyManager {
   private scene: Scene;
-  private enemies: Enemy[] = [];
+  private activeEnemies: Enemy[] = [];
+  private pool: Enemy[] = [];
   private enemyByMeshId = new Map<string, Enemy>();
   private updateObserver: Observer<Scene> | null = null;
   private walls: Mesh[] = [];
+  private floors: Mesh[] = [];
   private spawnPoints: Vector3[] = [];
   private container: AssetContainer | null = null;
   private ready = false;
@@ -59,7 +66,6 @@ export class EnemyManager {
 
   private playAnim(enemy: Enemy, name: ZombieAnim, loop: boolean = true): void {
     if (enemy.currentAnim === name) return;
-    // Stop current animation
     if (enemy.currentAnim) {
       const current = enemy.anims.get(enemy.currentAnim);
       if (current) current.stop();
@@ -77,10 +83,8 @@ export class EnemyManager {
     const root = instance.rootNodes[0] as AbstractMesh;
     root.scaling.setAll(ENEMY_SIZE);
 
-    // Collect all child meshes for hit detection
     const meshes = root.getChildMeshes();
 
-    // Map animation groups by name
     const anims = new Map<ZombieAnim, AnimationGroup>();
     for (const ag of instance.animationGroups) {
       const name = ag.name.toLowerCase();
@@ -90,12 +94,11 @@ export class EnemyManager {
       else if (name.includes("crawl")) anims.set("crawl", ag);
     }
 
-    // Stop all animations initially
     for (const ag of instance.animationGroups) {
       ag.stop();
     }
 
-    const enemy: Enemy = {
+    return {
       root,
       meshes,
       anims,
@@ -103,9 +106,21 @@ export class EnemyManager {
       hp: ENEMY_HP,
       lastAttackTime: 0,
       dying: false,
+      velocityY: 0,
+      groundY: 0,
     };
+  }
 
-    return enemy;
+  private acquireEnemy(): Enemy {
+    if (this.pool.length > 0) {
+      return this.pool.pop()!;
+    }
+    return this.createEnemy();
+  }
+
+  private releaseToPool(enemy: Enemy): void {
+    this.deactivateEnemy(enemy);
+    this.pool.push(enemy);
   }
 
   private activateEnemy(enemy: Enemy, x: number, z: number): void {
@@ -113,14 +128,14 @@ export class EnemyManager {
     enemy.lastAttackTime = 0;
     enemy.dying = false;
     enemy.currentAnim = null;
+    enemy.velocityY = 0;
+    enemy.groundY = 0;
     enemy.root.position = new Vector3(x, 0, z);
     enemy.root.rotation = Vector3.Zero();
     enemy.root.setEnabled(true);
 
-    // Start walk animation
     this.playAnim(enemy, "walk");
 
-    // Register in lookup map
     this.enemyByMeshId.set(enemy.root.uniqueId.toString(), enemy);
     for (const mesh of enemy.meshes) {
       this.enemyByMeshId.set(mesh.uniqueId.toString(), enemy);
@@ -131,13 +146,11 @@ export class EnemyManager {
     enemy.root.setEnabled(false);
     enemy.dying = false;
 
-    // Stop animations
     for (const ag of enemy.anims.values()) {
       ag.stop();
     }
     enemy.currentAnim = null;
 
-    // Unregister from lookup map
     this.enemyByMeshId.delete(enemy.root.uniqueId.toString());
     for (const mesh of enemy.meshes) {
       this.enemyByMeshId.delete(mesh.uniqueId.toString());
@@ -146,6 +159,10 @@ export class EnemyManager {
 
   setWalls(walls: Mesh[]): void {
     this.walls = walls;
+  }
+
+  setFloors(floors: Mesh[]): void {
+    this.floors = floors;
   }
 
   setSpawnPoints(points: Vector3[]): void {
@@ -169,9 +186,27 @@ export class EnemyManager {
       z = Math.sin(angle) * dist;
     }
 
-    const enemy = this.createEnemy();
+    const enemy = this.acquireEnemy();
     this.activateEnemy(enemy, x, z);
-    this.enemies.push(enemy);
+    this.activeEnemies.push(enemy);
+  }
+
+  private getGroundY(position: Vector3): number {
+    const groundMeshes = [...this.walls, ...this.floors];
+    if (groundMeshes.length === 0) return 0;
+
+    const rayOrigin = new Vector3(position.x, position.y + ENEMY_HEIGHT, position.z);
+    const ray = new Ray(rayOrigin, Vector3.Down(), ENEMY_HEIGHT + 2);
+    let groundY = 0;
+
+    for (const mesh of groundMeshes) {
+      const hit = ray.intersectsMesh(mesh);
+      if (hit.hit && hit.pickedPoint && hit.pickedPoint.y > groundY) {
+        groundY = hit.pickedPoint.y;
+      }
+    }
+
+    return groundY;
   }
 
   private update(): void {
@@ -182,7 +217,7 @@ export class EnemyManager {
     const playerPos = camera.position;
     const now = performance.now();
 
-    for (const enemy of this.enemies) {
+    for (const enemy of this.activeEnemies) {
       if (enemy.dying) continue;
 
       // Move toward player (XZ only)
@@ -193,32 +228,41 @@ export class EnemyManager {
       const sameFloor = heightDiff < 2;
 
       if (dist > ATTACK_RANGE || !sameFloor) {
-        // Walk toward player
         this.playAnim(enemy, "walk");
 
         dir.normalize();
         const step = dir.scaleInPlace(ENEMY_SPEED * dt);
         const nextPos = enemy.root.position.add(step);
-        nextPos.y = 0;
 
         if (this.walls.length > 0) {
-          const clamped = clampToMap(nextPos, this.walls, ENEMY_RADIUS);
+          const feetY = enemy.root.position.y;
+          const clamped = clampToMap(nextPos, this.walls, ENEMY_RADIUS, feetY);
           enemy.root.position.x = clamped.x;
           enemy.root.position.z = clamped.z;
         } else {
           enemy.root.position.x = nextPos.x;
           enemy.root.position.z = nextPos.z;
         }
-
-        enemy.root.position.y = 0;
       } else {
-        // Same floor AND in range — attack
         this.playAnim(enemy, "attack");
 
         if (now - enemy.lastAttackTime >= ATTACK_COOLDOWN) {
           enemy.lastAttackTime = now;
-          gameEvents.emit("playerDamaged", { damage: 1, currentHp: -1 });
+          gameEvents.emit("playerDamaged", { damage: 1 });
         }
+      }
+
+      // Ground detection via raycast
+      const groundY = this.getGroundY(enemy.root.position);
+      enemy.groundY = groundY;
+
+      // Apply gravity
+      enemy.velocityY -= GRAVITY * dt;
+      enemy.root.position.y += enemy.velocityY * dt;
+
+      if (enemy.root.position.y <= groundY) {
+        enemy.root.position.y = groundY;
+        enemy.velocityY = 0;
       }
 
       // Face the player
@@ -251,51 +295,53 @@ export class EnemyManager {
     enemy.dying = true;
     const position = enemy.root.position.clone();
 
-    // Play crawl as death animation (no dedicated death anim)
+    gameEvents.emit("enemyKilled", { position });
+
     this.playAnim(enemy, "crawl", false);
 
     const deathDuration = 1500;
     const startTime = performance.now();
+    const startY = enemy.root.position.y;
 
     const obs = this.scene.onBeforeRenderObservable.add(() => {
       const elapsed = performance.now() - startTime;
       const t = Math.min(elapsed / deathDuration, 1);
 
-      // Sink into ground
-      enemy.root.position.y = -(t * 1.5);
+      enemy.root.position.y = startY - t * 1.5;
 
       if (t >= 1) {
         this.scene.onBeforeRenderObservable.remove(obs);
-        this.releaseEnemy(enemy);
+        this.removeFromActive(enemy);
+        this.releaseToPool(enemy);
         gameEvents.emit("enemyDied", { position });
       }
     });
   }
 
-  private releaseEnemy(enemy: Enemy): void {
-    const idx = this.enemies.indexOf(enemy);
+  private removeFromActive(enemy: Enemy): void {
+    const idx = this.activeEnemies.indexOf(enemy);
     if (idx !== -1) {
-      this.enemies.splice(idx, 1);
-    }
-    this.deactivateEnemy(enemy);
-    for (const mesh of enemy.meshes) {
-      mesh.dispose();
-    }
-    enemy.root.dispose();
-    for (const ag of enemy.anims.values()) {
-      ag.dispose();
+      this.activeEnemies.splice(idx, 1);
     }
   }
 
   get aliveCount(): number {
-    return this.enemies.filter((e) => !e.dying).length;
+    return this.activeEnemies.filter((e) => !e.dying).length;
   }
 
   disposeAll(): void {
-    for (const enemy of [...this.enemies]) {
-      this.releaseEnemy(enemy);
+    for (const enemy of [...this.activeEnemies]) {
+      this.removeFromActive(enemy);
+      this.deactivateEnemy(enemy);
     }
-    this.enemies = [];
+    this.activeEnemies = [];
+    // Also clear the pool
+    for (const enemy of this.pool) {
+      for (const mesh of enemy.meshes) mesh.dispose();
+      enemy.root.dispose();
+      for (const ag of enemy.anims.values()) ag.dispose();
+    }
+    this.pool = [];
   }
 
   dispose(): void {

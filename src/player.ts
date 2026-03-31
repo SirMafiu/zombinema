@@ -21,8 +21,7 @@ export class PlayerHealth {
     if (this.dead) return;
 
     this.hp = Math.max(0, this.hp - amount);
-    // Re-emit with the actual current HP so listeners (HUD) can use it
-    gameEvents.emit("playerDamaged", { damage: amount, currentHp: this.hp });
+    gameEvents.emit("playerHpChanged", { currentHp: this.hp, maxHp: MAX_HP });
 
     if (this.hp <= 0) {
       this.die();

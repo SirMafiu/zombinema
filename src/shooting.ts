@@ -89,7 +89,14 @@ export function setupShooting(
   const activeMarkers: ImpactMarker[] = [];
   const activeFlashes: MuzzleFlash[] = [];
 
+  let gameOver = false;
+
+  gameEvents.on("playerDied", () => {
+    gameOver = true;
+  });
+
   window.addEventListener("click", () => {
+    if (gameOver) return;
     if (!document.pointerLockElement) return;
 
     if (!weapon.shoot()) return;

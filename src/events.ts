@@ -2,7 +2,9 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 
 export type EventMap = {
   enemyDied: { position: Vector3 };
-  playerDamaged: { damage: number; currentHp: number };
+  enemyKilled: { position: Vector3 };
+  playerDamaged: { damage: number };
+  playerHpChanged: { currentHp: number; maxHp: number };
   playerDied: { round: number };
   roundChanged: { round: number };
   roundCleared: {};

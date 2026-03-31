@@ -22,9 +22,10 @@ async function init() {
   setupFpsController(scene, canvas, mapData.playerStart, mapData.walls, mapData.floors);
 
   const hud = new HUD();
-  const _playerHealth = new PlayerHealth();
+  const playerHealth = new PlayerHealth();
   const enemyManager = new EnemyManager(scene);
   enemyManager.setWalls(mapData.walls);
+  enemyManager.setFloors(mapData.floors ?? []);
   enemyManager.setSpawnPoints(mapData.spawnPoints);
 
   const roundManager = new RoundManager(enemyManager);

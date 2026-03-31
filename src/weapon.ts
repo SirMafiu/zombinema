@@ -145,9 +145,10 @@ export class Weapon {
       this.root.position.x = REST_POSITION.x + swayX;
       this.root.position.y = REST_POSITION.y + swayY;
     } else {
-      // Gently return to rest
-      this.root.position.x += (REST_POSITION.x - this.root.position.x) * 0.1;
-      this.root.position.y += (REST_POSITION.y - this.root.position.y) * 0.1;
+      // Gently return to rest (frame-rate independent)
+      const t = 1 - Math.pow(0.001, dt * 0.001);
+      this.root.position.x += (REST_POSITION.x - this.root.position.x) * t;
+      this.root.position.y += (REST_POSITION.y - this.root.position.y) * t;
     }
   }
 
