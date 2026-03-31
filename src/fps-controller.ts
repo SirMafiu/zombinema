@@ -5,14 +5,14 @@ import { Ray } from "@babylonjs/core/Culling/ray";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { clampToMap } from "./map";
 
-const MOVE_SPEED = 10;
+const MOVE_SPEED = 6;
 const SPRINT_MULTIPLIER = 1.8;
 const MOUSE_SENSITIVITY = 0.002;
 const PITCH_LIMIT = (85 * Math.PI) / 180;
 const PLAYER_HEIGHT = 1.8;
 const PLAYER_RADIUS = 0.4;
-const JUMP_FORCE = 6;
-const GRAVITY = 15;
+const JUMP_FORCE = 5;
+const GRAVITY = 25;
 
 const MOVEMENT_KEYS = new Set([
   "KeyW", "KeyZ", "KeyS", "KeyD", "KeyA", "KeyQ",

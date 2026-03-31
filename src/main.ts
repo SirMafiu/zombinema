@@ -46,24 +46,22 @@ async function init() {
     document.exitPointerLock();
   });
 
-  // TODO: re-enable enemies when map work is done
-  // let startDelay = 0;
-  // let gameStarted = false;
-  // const START_DELAY_MS = 2000;
+  let startDelay = 0;
+  let gameStarted = false;
+  const START_DELAY_MS = 2000;
 
   engine.runRenderLoop(() => {
     const dt = engine.getDeltaTime();
 
-    // Enemies disabled — map editing mode
-    // if (!gameStarted) {
-    //   startDelay += dt;
-    //   if (startDelay >= START_DELAY_MS) {
-    //     gameStarted = true;
-    //     roundManager.start();
-    //   }
-    // } else {
-    //   roundManager.update(dt);
-    // }
+    if (!gameStarted) {
+      startDelay += dt;
+      if (startDelay >= START_DELAY_MS) {
+        gameStarted = true;
+        roundManager.start();
+      }
+    } else {
+      roundManager.update(dt);
+    }
 
     const playerPos = scene.activeCamera!.position;
     powerUpManager.update(dt, playerPos);
