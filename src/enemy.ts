@@ -185,13 +185,15 @@ export class EnemyManager {
     for (const enemy of this.enemies) {
       if (enemy.dying) continue;
 
-      // Move toward player
+      // Move toward player (XZ only)
       const dir = playerPos.subtract(enemy.root.position);
+      const heightDiff = Math.abs(dir.y);
       dir.y = 0;
       const dist = dir.length();
+      const sameFloor = heightDiff < 2;
 
-      if (dist > ATTACK_RANGE) {
-        // Walking toward player
+      if (dist > ATTACK_RANGE || !sameFloor) {
+        // Walk toward player
         this.playAnim(enemy, "walk");
 
         dir.normalize();
@@ -210,7 +212,7 @@ export class EnemyManager {
 
         enemy.root.position.y = 0;
       } else {
-        // Attack player
+        // Same floor AND in range — attack
         this.playAnim(enemy, "attack");
 
         if (now - enemy.lastAttackTime >= ATTACK_COOLDOWN) {
