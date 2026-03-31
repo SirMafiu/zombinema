@@ -1,6 +1,7 @@
 import { Scene } from "@babylonjs/core/scene";
 import { UniversalCamera } from "@babylonjs/core/Cameras/universalCamera";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Ray } from "@babylonjs/core/Culling/ray";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { clampToMap } from "./map";
 
@@ -29,7 +30,10 @@ export function setupFpsController(
   canvas: HTMLCanvasElement,
   playerStart: Vector3,
   walls: Mesh[],
+  floors: Mesh[] = [],
 ): UniversalCamera {
+  // All meshes to raycast against for ground detection
+  const groundMeshes = [...walls, ...floors];
   const camera = new UniversalCamera("fps", playerStart.clone(), scene);
   camera.setTarget(playerStart.add(new Vector3(0, 0, 1)));
   camera.minZ = 0.1;
@@ -101,17 +105,33 @@ export function setupFpsController(
       camera.position.addInPlace(move);
     }
 
-    // Clamp position against walls
-    const clamped = clampToMap(camera.position, walls, PLAYER_RADIUS);
+    // Clamp position against walls — feetY lets player walk onto stairs
+    const feetY = camera.position.y - PLAYER_HEIGHT;
+    const clamped = clampToMap(camera.position, walls, PLAYER_RADIUS, feetY);
     camera.position.x = clamped.x;
     camera.position.z = clamped.z;
+
+    // Raycast downward to find ground/stair surface beneath the player
+    const rayOrigin = new Vector3(camera.position.x, camera.position.y, camera.position.z);
+    const ray = new Ray(rayOrigin, Vector3.Down(), PLAYER_HEIGHT + 1);
+    let groundY = 0;
+
+    for (const mesh of groundMeshes) {
+      const hit = ray.intersectsMesh(mesh);
+      if (hit.hit && hit.pickedPoint) {
+        if (hit.pickedPoint.y > groundY) {
+          groundY = hit.pickedPoint.y;
+        }
+      }
+    }
 
     // Vertical movement (gravity + jump)
     velocityY -= GRAVITY * dt;
     camera.position.y += velocityY * dt;
 
-    if (camera.position.y <= PLAYER_HEIGHT) {
-      camera.position.y = PLAYER_HEIGHT;
+    const floorY = groundY + PLAYER_HEIGHT;
+    if (camera.position.y <= floorY) {
+      camera.position.y = floorY;
       velocityY = 0;
       onGround = true;
     }

@@ -14,6 +14,7 @@ const WALL_THICKNESS = 0.3;
 
 export interface MapData {
   walls: Mesh[];
+  floors?: Mesh[];
   spawnPoints: Vector3[];
   playerStart: Vector3;
   powerUpSpawns: Vector3[];
@@ -200,14 +201,35 @@ export function createMap(scene: Scene): MapData {
 /**
  * Clamp a position so it doesn't overlap any wall bounding box.
  * Uses AABB push-out: find the smallest penetration axis and push out.
+ *
+ * @param feetY – Y position of the player's feet. Walls whose top is at or
+ *   below feetY + stepHeight are walkable surfaces and will be ignored.
+ * @param stepHeight – max height the player can step onto without being blocked.
  */
-export function clampToMap(position: Vector3, walls: AbstractMesh[], radius: number = 0.4): Vector3 {
+export function clampToMap(
+  position: Vector3,
+  walls: AbstractMesh[],
+  radius: number = 0.4,
+  feetY: number = 0,
+  stepHeight: number = 0.6,
+): Vector3 {
   const result = position.clone();
 
   for (const wall of walls) {
     const bb = wall.getBoundingInfo().boundingBox;
     const min = bb.minimumWorld;
     const max = bb.maximumWorld;
+
+    // Skip walls whose top is below the player's feet + step tolerance
+    // (the player is walking on top of them, not blocked by them)
+    if (max.y <= feetY + stepHeight) {
+      continue;
+    }
+
+    // Skip walls whose bottom is above the player's head (not relevant)
+    if (min.y > position.y) {
+      continue;
+    }
 
     // Expand the wall AABB by the radius
     const eMinX = min.x - radius;

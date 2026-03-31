@@ -12,20 +12,14 @@ import { PowerUpManager } from "./powerup";
 import { PowerUpEffectManager } from "./powerup-effects";
 import { loadMap } from "./map-loader";
 
-// Set to a .glb path to use a custom Blender map, or null for the procedural map
-const CUSTOM_MAP_PATH: string | null = null; // e.g. "/assets/office.glb"
-
 const canvas = document.getElementById("renderCanvas") as HTMLCanvasElement;
 const engine = new Engine(canvas, true);
+const scene = createScene(engine);
 
-const { scene, mapData: proceduralMapData } = createScene(engine);
 async function init() {
-  // Load map: custom .glb or fallback to procedural
-  const mapData = CUSTOM_MAP_PATH
-    ? await loadMap(scene, CUSTOM_MAP_PATH)
-    : proceduralMapData;
+  const mapData = await loadMap(scene, "/assets/office.glb");
 
-  setupFpsController(scene, canvas, mapData.playerStart, mapData.walls);
+  setupFpsController(scene, canvas, mapData.playerStart, mapData.walls, mapData.floors);
 
   const hud = new HUD();
   const _playerHealth = new PlayerHealth();
@@ -48,35 +42,33 @@ async function init() {
 
   setupShooting(scene, enemyManager, hud, effectManager);
 
-  // Release pointer lock on player death
   gameEvents.on("playerDied", () => {
     document.exitPointerLock();
   });
 
-  // Start the first round after a short delay using delta-time tracking
-  let startDelay = 0;
-  let gameStarted = false;
-  const START_DELAY_MS = 2000;
+  // TODO: re-enable enemies when map work is done
+  // let startDelay = 0;
+  // let gameStarted = false;
+  // const START_DELAY_MS = 2000;
 
   engine.runRenderLoop(() => {
     const dt = engine.getDeltaTime();
 
-    if (!gameStarted) {
-      startDelay += dt;
-      if (startDelay >= START_DELAY_MS) {
-        gameStarted = true;
-        roundManager.start();
-      }
-    } else {
-      roundManager.update(dt);
-    }
+    // Enemies disabled — map editing mode
+    // if (!gameStarted) {
+    //   startDelay += dt;
+    //   if (startDelay >= START_DELAY_MS) {
+    //     gameStarted = true;
+    //     roundManager.start();
+    //   }
+    // } else {
+    //   roundManager.update(dt);
+    // }
 
-    // Update power-ups
     const playerPos = scene.activeCamera!.position;
     powerUpManager.update(dt, playerPos);
     effectManager.update(dt);
 
-    // Update HUD power-up timer
     const compilateurRemaining = effectManager.getRemainingTime("compilateur");
     if (compilateurRemaining > 0) {
       hud.updatePowerUpTimer(compilateurRemaining);
